@@ -39,6 +39,7 @@ impl WAL {
 
     /// Sequentially write a record (maintains mutable reference)
     pub fn write_record(&mut self, payload: Vec<u8>) -> io::Result<u64> {
+        let payload = compress_data(&payload);
         let length = payload.len() as u32;
         let mut buf = Vec::with_capacity(4 + payload.len());
         buf.extend_from_slice(&length.to_le_bytes());
@@ -81,6 +82,7 @@ impl WAL {
             let mut payload = vec![0u8; length as usize];
             self.file.read_at(&mut payload, offset)?;
             offset += length;
+            let payload = de_compress_data(&payload);
             callback(payload);
         }
 
@@ -112,4 +114,12 @@ pub fn get_all_wal_ids<P: AsRef<Path>>(path: P) -> Vec<u64> {
         }
     }
     ids
+}
+
+fn compress_data(data: &[u8]) -> Vec<u8> {
+    zstd::encode_all(data, 3).unwrap()
+}
+
+fn de_compress_data(data: &[u8]) -> Vec<u8> {
+    zstd::decode_all(data).unwrap()
 }
