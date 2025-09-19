@@ -60,7 +60,7 @@ fn main() {
     let kv = KV::new(dir.path(), kv_options).unwrap();
 
     let n: u64 = 100_000;
-    let value = vec![7u8; 4096]; // 64-byte value
+    let value = vec![7u8; 4096]; // 4kb value
 
     sleep(Duration::from_secs(10));
 
