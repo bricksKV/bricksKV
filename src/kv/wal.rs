@@ -26,8 +26,8 @@ impl WAL {
     pub fn open(path: &Path, fsync: bool) -> io::Result<Self> {
         let mut file = OpenOptions::new()
             .create(true)
+            .append(true) // O_APPEND
             .read(true)
-            .write(true)
             .open(path)?;
         let end_offset = file.seek(SeekFrom::End(0))?;
         Ok(Self {
@@ -45,7 +45,7 @@ impl WAL {
         buf.extend_from_slice(&payload);
 
         let offset = self.end_offset;
-        self.file.write_at(&buf, offset)?;
+        self.file.write(&buf)?;
         if self.fsync {
             self.file.sync_all()?;
         }
