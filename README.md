@@ -1,8 +1,8 @@
 ## 介绍
-bricksKV是一个高性能的key-value存储系统。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，只不过它只支持串行写，但支持并发读，不支持遍历。
+bricksKV是一个高性能的key-value存储系统。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，只不过它只支持串行写，支持并发读，不支持遍历。
 核心设计思路在于将key和value分离存储：
-1. key根据hash分桶存储在不同的索引文件中，索引会存储key已经value的存储位置。
-2. value根据长度大小匹配存储到支持不同固定长度的分级文件中（比如支持数据项为32Byte，64Byte等不同分级文件）。每个value会有一个存储位置标识，存储到上述key的索引中，这样，读的时候，只需要根据key的hash值，定位到对应的分桶，然后根据value的长度，定位到对应的value文件，然后读取value。
+1. key根据hash分桶存储在不同的索引文件中，索引会存储key以及value的存储位置。
+2. value根据长度大小匹配存储到支持不同固定长度的分级文件中（比如支持数据项为32Byte，64Byte等不同分级文件）。每个value会有一个存储位置标识，存储到上述key的索引中，这样，读的时候，只需要根据key的hash值，定位到对应的分桶，然后根据value的位置标识id，定位到对应的value存储文件，然后读取value。
 
 ## 架构
 ![Architecture](./docs/image/architecture.png)
@@ -39,7 +39,7 @@ bricksKV是一个高性能的key-value存储系统。用一句话来类比，bri
 
 ![key-store](./docs/image/key-store.png)
 
-键存储的核心思路是类似concurrenthashmap，将键分桶存储，根据键的hash值路由到不同的桶中，桶内又按照键的hash计算数据项的下标。键存储文件也是以固定长度的数据项为单位存储，数据项的内容为键+值的编号id+值长度。
+键存储的核心思路是类似ConcurrentHashmap，将键分桶存储，根据键的hash值路由到不同的桶中，桶内又按照键的hash计算数据项的下标。键存储文件也是以固定长度的数据项为单位存储，数据项的内容为键+值的编号id+值长度。
 hash碰撞的解决方案是匹配到同一下标时假设出现碰撞，则继续像后寻找最多指定数量（比如32次）的数据项，如果仍然没有找到空闲数据项则扩容。扩容和hashmap的扩容方式类似，先创建一个更大的文件，然后将数据项复制过去。
 
 ### 内存层：
