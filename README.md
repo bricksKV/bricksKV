@@ -58,5 +58,5 @@ kv-cache位于kv-buffer和key-store、value-store之间，kv-cache的作用是�
 
 ## 性能分析
 * 写：串行追加写入wal文件。
-* 读：支持并发读，如果打到kv-cache则比较快，如果没有则先从key-store通过hash找，即使发生hash碰撞，最多读32个数据页（一般会设置小于等于4k）也可以通过一次io即可解决，然后根据值的编号id可从value-store通过一次io读取。
+* 读：支持并发读，如果打到kv-cache则比较快，如果没有则先从key-store通过hash找，即使发生hash碰撞，最多读32个数据项（一般会设置总大小小于等于4k）也可以通过一次io即可解决，然后根据值的编号id可从value-store通过一次io读取。
 所以理论上即使不走缓存一般2次io即可完成读取。
