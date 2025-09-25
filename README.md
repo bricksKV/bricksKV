@@ -1,3 +1,4 @@
+（概念验证，不断迭代开发阶段...)
 ## 介绍
 bricksKV是一个高性能的key-value存储系统。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，只不过它只支持定长键，变长值，串行写，并发读，不支持遍历。
 核心设计思路在于将key和value分离存储：
