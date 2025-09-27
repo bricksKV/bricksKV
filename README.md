@@ -1,6 +1,7 @@
 （概念验证，不断迭代开发阶段...)
 ## 介绍
-bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，支持串行写，并发读，读写能做到O(1)时间复杂度。
+bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，支持串行写，并发读，读写能做到O(1)时间复杂度。  
+  
 核心设计思路在于将key和value分离存储：
 1. key根据hash分桶存储在不同的索引文件中，索引会存储key以及value的存储位置。
 2. value根据长度大小匹配存储到支持不同固定长度的分级文件中（比如支持数据项为32Byte，64Byte等不同分级文件）。每个value会有一个存储位置标识，存储到上述key的索引中，这样，读的时候，只需要根据key的hash值，定位到对应的分桶，然后根据value的位置标识id，定位到对应的value存储文件，然后读取value。
