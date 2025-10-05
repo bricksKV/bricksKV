@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{error, fs, io, thread};
 
 struct FlushingBuffer {
@@ -40,6 +40,7 @@ pub struct KV {
     flushing_buffers: Arc<RwLock<Vec<FlushingBuffer>>>,
     flush_lock: Arc<Mutex<()>>,
     wal_flush_size: u32,
+    opts: KVOptions,
 }
 
 #[derive(Clone, Debug)]
@@ -194,6 +195,7 @@ impl KV {
             flushing_buffers: Arc::new(Default::default()),
             flush_lock: Arc::new(Mutex::new(())),
             wal_flush_size: opts.wal_options.flush_size,
+            opts,
         };
         if need_load_data {
             kv.load()?;
@@ -213,7 +215,7 @@ impl KV {
         let key_size = self.key_size as usize;
         for wal_id in wal_ids {
             let wal_file_path = self.wal_file_path(wal_id);
-            let wal = WAL::open(wal_file_path.as_path(), true)?;
+            let wal = WAL::open(wal_file_path.as_path(), self.opts.wal_options.fsync)?;
             if wal_id == self.meta.read().unwrap().current_wal_id {
                 let mut current_buffer = self.current_buffer.write().unwrap();
                 wal.replay(|batch_payload| {
@@ -341,11 +343,12 @@ impl KV {
 
         // Write to WAL
         let size = wal_with_write_lock.write_record(payload)?;
+
         if size > self.wal_flush_size as u64 {
             pre_wal_path = Some(self.wal_file_path(self.current_wal_id.load(Ordering::Relaxed)));
             let next_wal_id = self.current_wal_id.load(Ordering::Relaxed) + 1;
             let next_wal_path = self.wal_file_path(next_wal_id);
-            *wal_with_write_lock = WAL::open(next_wal_path.as_path(), true)?;
+            *wal_with_write_lock = WAL::open(next_wal_path.as_path(), self.opts.wal_options.fsync)?;
             self.current_wal_id.fetch_add(1, Ordering::Relaxed);
             flush_buffer = true;
         }
