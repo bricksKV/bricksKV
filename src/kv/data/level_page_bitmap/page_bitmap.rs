@@ -327,30 +327,10 @@ pub fn expand_and_zero(file: &File, n1: u64, n2: u64) -> std::io::Result<()> {
         return Ok(());
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        use nix::fcntl::{FallocateFlags, fallocate};
-        use std::os::unix::io::AsRawFd;
-
-        let fd = file.as_raw_fd();
-        fallocate(
-            fd,
-            FallocateFlags::FALLOC_FL_ZERO_RANGE,
-            n1 as i64,
-            (n2 - n1) as i64,
-        )
-            .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
-        file.sync_all()?;
-        return Ok(());
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let last_pos = n2 - 1;
-        file.write_at(&[0], last_pos)?;
-        file.sync_all()?;
-        Ok(())
-    }
+    let last_pos = n2 - 1;
+    file.write_at(&[0], last_pos)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 #[cfg(test)]
