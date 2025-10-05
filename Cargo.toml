@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+nix = "0.27"
 bitvec = "1"
 boxcar = "0.2.14"
 serde = { version = "1.0", features = ["derive"] }
