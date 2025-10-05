@@ -59,7 +59,7 @@ fn main() {
     kv_options.wal_options.fsync = false; // disable fsync for faster benchmark
     let kv = KV::new(dir.path(), kv_options).unwrap();
 
-    let n: u64 = 100_000;
+    let n: u64 = 1000_000;
     let value = vec![7u8; 4096]; // 4kb value
 
     sleep(Duration::from_secs(10));
