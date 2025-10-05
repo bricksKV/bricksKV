@@ -55,12 +55,13 @@ fn bench_read_random(kv: &KV, n: u64, value: &[u8]) {
 
 fn main() {
     let dir = tempdir().unwrap();
+    println!("Benchmarking in {}", dir.path().display());
     let mut kv_options = KVOptions::default();
     kv_options.wal_options.fsync = false; // disable fsync for faster benchmark
     let kv = KV::new(dir.path(), kv_options).unwrap();
 
     let n: u64 = 1000_000;
-    let value = vec![7u8; 4096]; // 4kb value
+    let value = vec![7u8; 32]; // 32b value
 
     sleep(Duration::from_secs(10));
 
