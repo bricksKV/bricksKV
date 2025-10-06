@@ -276,59 +276,10 @@ impl PageBitmap {
 
     /// Read a page from file
     pub fn read_page(&self, page_idx: u64) -> std::io::Result<Vec<u8>> {
-        let page_size = self.page_size as u64;
-        let file_len = self.data_file.metadata()?.len();
-        let offset = page_idx * page_size;
-
-        if let Some(cache) = &self.cache {
-            if let Some(cached) = cache.get(&page_idx) {
-                return Ok(cached);
-            }
-        }
-
-        if offset >= file_len {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                format!("page {} starts beyond file end", page_idx),
-            ));
-        }
-
-        let mut read_page_count = 1;
-        let mut read_size = page_size;
-        if page_size <= SMALL_PAGE_SIZE_THRESHOLD {
-            read_page_count = (4096 + page_size - 1) / page_size; // 向上取整
-            read_size = read_page_count * page_size;
-        }
-
-        let read_size = read_size.min(file_len - offset);
-
-        let mut buf = vec![0u8; read_size as usize];
-        let bytes_read = self.data_file.read_at(&mut buf, offset)?;
-
-        if bytes_read < page_size as usize {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                format!(
-                    "read truncated: expected at least {} bytes, got {}",
-                    page_size, bytes_read
-                ),
-            ));
-        }
-
-        // 3. 缓存所有小页
-        if let Some(cache) = &self.cache {
-            let pages_in_buf = bytes_read / page_size as usize;
-            for i in 0..pages_in_buf {
-                let start = (i as u64 * page_size) as usize;
-                let end = start + page_size as usize;
-                let page_buf = buf[start..end].to_vec();
-                cache.insert(page_idx + i as u64, page_buf);
-            }
-        }
-
-        // 4. 返回请求的页
-        let return_buf = buf[..page_size as usize].to_vec();
-        Ok(return_buf)
+        let offset = page_idx * self.page_size as u64;
+        let mut buffer = vec![0u8; self.page_size as usize];
+        self.data_file.read_at(&mut buffer, offset)?;
+        Ok(buffer)
     }
 
     /// Free a page (mark as unused)
