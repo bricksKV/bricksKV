@@ -3,7 +3,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use moka::sync::Cache;
+use crate::kv::data::level_page_bitmap::{page_bitmap, SMALL_PAGE_SIZE_THRESHOLD};
 
 #[derive(Debug)]
 pub struct PageBitmap {
@@ -12,13 +14,17 @@ pub struct PageBitmap {
     page_size: u32,
     index_file: File,
     data_file: File,
+    cache: Option<Arc<Cache<u64, Vec<u8>>>>,
 }
+
+
 
 impl PageBitmap {
     pub(crate) fn new(
         index_file_path: &Path,
         data_file_path: &Path,
         page_size: u32,
+        cache: Option<Arc<Cache<u64, Vec<u8>>>>,
     ) -> std::io::Result<Self> {
         // Open or create index file
         let mut file = OpenOptions::new()
@@ -56,10 +62,13 @@ impl PageBitmap {
                 page_size,
                 index_file: file,
                 data_file,
+                cache,
             })
         } else {
             // Recover from existing files
-            Self::recover_from_file(index_file_path, data_file_path, page_size)
+            let mut page_bitmap = Self::recover_from_file(index_file_path, data_file_path, page_size)?;
+            page_bitmap.cache = cache;
+            Ok(page_bitmap)
         }
     }
     fn recover_from_file(
@@ -119,6 +128,7 @@ impl PageBitmap {
             page_size,
             index_file,
             data_file,
+            cache: None,
         })
     }
 
@@ -266,14 +276,68 @@ impl PageBitmap {
 
     /// Read a page from file
     pub fn read_page(&self, page_idx: u64) -> std::io::Result<Vec<u8>> {
-        let offset = page_idx * self.page_size as u64;
-        let mut buffer = vec![0u8; self.page_size as usize];
-        self.data_file.read_at(&mut buffer, offset)?;
-        Ok(buffer)
+        let page_size = self.page_size as u64;
+        let file_len = self.data_file.metadata()?.len();
+        let offset = page_idx * page_size;
+
+        if let Some(cache) = &self.cache {
+            if let Some(cached) = cache.get(&page_idx) {
+                return Ok(cached);
+            }
+        }
+
+        if offset >= file_len {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("page {} starts beyond file end", page_idx),
+            ));
+        }
+
+        let mut read_page_count = 1;
+        let mut read_size = page_size;
+        if page_size <= SMALL_PAGE_SIZE_THRESHOLD {
+            read_page_count = (4096 + page_size - 1) / page_size; // 向上取整
+            read_size = read_page_count * page_size;
+        }
+
+        let read_size = read_size.min(file_len - offset);
+
+        let mut buf = vec![0u8; read_size as usize];
+        let bytes_read = self.data_file.read_at(&mut buf, offset)?;
+
+        if bytes_read < page_size as usize {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "read truncated: expected at least {} bytes, got {}",
+                    page_size, bytes_read
+                ),
+            ));
+        }
+
+        // 3. 缓存所有小页
+        if let Some(cache) = &self.cache {
+            let pages_in_buf = bytes_read / page_size as usize;
+            for i in 0..pages_in_buf {
+                let start = (i as u64 * page_size) as usize;
+                let end = start + page_size as usize;
+                let page_buf = buf[start..end].to_vec();
+                cache.insert(page_idx + i as u64, page_buf);
+            }
+        }
+
+        // 4. 返回请求的页
+        let return_buf = buf[..page_size as usize].to_vec();
+        Ok(return_buf)
     }
 
     /// Free a page (mark as unused)
     pub fn free_page(&self, idx: u64) -> std::io::Result<()> {
+
+        if let Some(cache) = &self.cache {
+            cache.remove(&idx);
+        }
+        
         let idx_usize = idx as usize;
 
         // Clear bit in index file
@@ -345,7 +409,7 @@ mod tests {
         let data_file = dir.path().join("data.dat");
 
         let page_size = 128u32;
-        let bitmap = PageBitmap::new(&index_file, &data_file, page_size).unwrap();
+        let bitmap = PageBitmap::new(&index_file, &data_file, page_size, None).unwrap();
 
         // Write one page
         let data = vec![1u8; page_size as usize];
@@ -370,7 +434,7 @@ mod tests {
         let data_file = dir.path().join("data.dat");
 
         let page_size = 64u32;
-        let bitmap = PageBitmap::new(&index_file, &data_file, page_size).unwrap();
+        let bitmap = PageBitmap::new(&index_file, &data_file, page_size,None).unwrap();
 
         // Writing oversized page should fail
         let data = vec![1u8; (page_size + 1) as usize];
@@ -387,7 +451,7 @@ mod tests {
         let page_size = 128u32;
 
         {
-            let bitmap = PageBitmap::new(&index_file, &data_file, page_size).unwrap();
+            let bitmap = PageBitmap::new(&index_file, &data_file, page_size, None).unwrap();
             let data = vec![42u8; page_size as usize];
             let page_idx = bitmap.write_page(data.clone()).unwrap();
 
@@ -410,7 +474,7 @@ mod tests {
         let data_file = dir.path().join("data.dat");
 
         let page_size = 64u32;
-        let bitmap = PageBitmap::new(&index_file, &data_file, page_size).unwrap();
+        let bitmap = PageBitmap::new(&index_file, &data_file, page_size, None).unwrap();
 
         // Allocate multiple pages continuously
         let mut pages = vec![];
@@ -447,7 +511,7 @@ mod tests {
         let data_path = dir.path().join("data.dat");
 
         // Page size = 16 bytes
-        let bitmap = PageBitmap::new(&index_path, &data_path, 16).unwrap();
+        let bitmap = PageBitmap::new(&index_path, &data_path, 16, None).unwrap();
 
         let mut allocated = Vec::new();
 

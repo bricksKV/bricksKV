@@ -72,6 +72,7 @@ impl From<serde_json::Error> for BucketsError {
     }
 }
 
+#[derive(Clone)]
 pub struct BucketsOptions {
     pub key_size: u32,
     pub bucket_count: u32,

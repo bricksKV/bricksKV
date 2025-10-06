@@ -36,6 +36,13 @@ impl WAL {
             fsync,
         })
     }
+    
+    pub fn flush(&mut self) -> io::Result<()> {
+        if self.fsync {
+            self.file.sync_all()?;
+        }
+        Ok(())
+    }
 
     /// Sequentially write a record (maintains mutable reference)
     pub fn write_record(&mut self, payload: Vec<u8>) -> io::Result<u64> {
@@ -60,30 +67,29 @@ impl WAL {
         F: FnMut(Vec<u8>),
     {
         let file_len = self.file.metadata()?.len();
+        if file_len == 0 {
+            return Ok(());
+        }
+
         let mut offset = 0;
+        let mut buf = vec![0u8; file_len as usize];
 
-        while offset < file_len {
-            // Read the length
-            let mut len_bytes = [0u8; 4];
+        // 一次性读入整个文件
+        self.file.read_exact_at(&mut buf, 0)?;
 
-            // If remaining bytes are less than 4, the file tail is corrupted; truncate and exit
-            if offset + 4 > file_len {
-                break;
-            }
-
-            self.file.read_at(&mut len_bytes, offset)?;
-            let length = u32::from_le_bytes(len_bytes) as u64;
+        while offset + 4 <= buf.len() {
+            let length = u32::from_le_bytes(buf[offset..offset + 4].try_into().unwrap()) as usize;
             offset += 4;
 
-            // If remaining bytes are less than length, the file tail is corrupted; truncate and exit
-            if offset + length > file_len {
-                break;
+            if offset + length > buf.len() {
+                break; // 文件尾部损坏
             }
-            let mut payload = vec![0u8; length as usize];
-            self.file.read_at(&mut payload, offset)?;
-            offset += length;
-            let payload = de_compress_data(&payload);
+
+            let payload = &buf[offset..offset + length];
+            let payload = de_compress_data(payload);
             callback(payload);
+
+            offset += length;
         }
 
         Ok(())

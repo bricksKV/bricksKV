@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use std::{error, fs, io, thread};
+use quick_cache::sync::Cache;
 
 struct FlushingBuffer {
     buffer: HashMap<Vec<u8>, KVOp>,
@@ -113,6 +114,7 @@ const WAL_DIR_NAME: &str = "wal";
 
 const KV_META_FILE_NAME: &str = "kv.meta";
 
+#[derive(Clone)]
 pub struct WALOptions {
     pub flush_size: u32,
     pub fsync: bool,
@@ -127,10 +129,10 @@ impl Default for WALOptions {
     }
 }
 
-#[derive(Default)]
+#[derive(Default,Clone)]
 pub struct KVOptions {
     pub key_store_options: BucketsOptions,
-    pub data_store_options: LevelPageOptions,
+    pub value_store_options: LevelPageOptions,
     pub wal_options: WALOptions,
 }
 
@@ -152,7 +154,7 @@ impl KV {
 
         let level_page_bitmap = Arc::new(level_page_bitmap::LevelPage::new(
             &dir, // Each page_size file under the directory
-            LevelPageOptions::default(),
+            opts.value_store_options.clone(),
         )?);
 
         let bucket_index = Arc::new(Buckets::new(
@@ -284,7 +286,7 @@ impl KV {
         let batch = Batch {
             ops: vec![(key, KVOp::Put { value })],
         };
-        self.do_batch(batch)
+        self.batch(batch)
     }
 
     /// Single delete operation
@@ -293,11 +295,11 @@ impl KV {
         let batch = Batch {
             ops: vec![(key, KVOp::Del {})],
         };
-        self.do_batch(batch)
+        self.batch(batch)
     }
 
     /// Batch put/delete
-    pub fn do_batch(&self, batch: Batch) -> Result<(), KVError> {
+    pub fn batch(&self, batch: Batch) -> Result<(), KVError> {
         let mut wal_with_write_lock = self.current_wal.write().unwrap();
         let mut flush_buffer = false;
         let mut pre_wal_path = None;
@@ -348,6 +350,9 @@ impl KV {
             pre_wal_path = Some(self.wal_file_path(self.current_wal_id.load(Ordering::Relaxed)));
             let next_wal_id = self.current_wal_id.load(Ordering::Relaxed) + 1;
             let next_wal_path = self.wal_file_path(next_wal_id);
+            if !self.opts.wal_options.fsync {
+                wal_with_write_lock.flush()?;// at least flush here
+            }
             *wal_with_write_lock = WAL::open(next_wal_path.as_path(), self.opts.wal_options.fsync)?;
             self.current_wal_id.fetch_add(1, Ordering::Relaxed);
             flush_buffer = true;
