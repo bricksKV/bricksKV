@@ -1,5 +1,3 @@
-（概念验证，不断迭代开发阶段...)
-
 ## 介绍
 
 bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类比，bricksKV是一个disk版本的ConcurrentHashMap，支持串行写，并发读，读能做到O(1)时间复杂度。
