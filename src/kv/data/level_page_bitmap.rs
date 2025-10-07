@@ -1,10 +1,10 @@
 use crate::kv::data::level_page_bitmap::page_bitmap::PageBitmap;
+use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, create_dir_all};
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::sync::Arc;
-use moka::sync::Cache;
 
 mod page_bitmap;
 
@@ -41,12 +41,7 @@ pub enum LevelsConfig {
 #[derive(Clone)]
 pub struct LevelPageOptions {
     pub levels_config: LevelsConfig,
-    pub small_page_cache_size: u64,
 }
-
-const MIN_SMALL_PAGE_CACHE_SIZE: u64 = 64 * 1024 * 1024; //64MB
-
-const SMALL_PAGE_SIZE_THRESHOLD: u64 = 2048;
 
 impl Default for LevelPageOptions {
     fn default() -> Self {
@@ -55,7 +50,6 @@ impl Default for LevelPageOptions {
                 start_page_size: 32,
                 level_count: 8,
             },
-            small_page_cache_size: MIN_SMALL_PAGE_CACHE_SIZE, // 64MB
         }
     }
 }
@@ -78,7 +72,7 @@ impl LevelPage {
                 } => {
                     let mut level_page_sizes = Vec::with_capacity(level_count as usize);
                     level_page_sizes.push(start_page_size as u32);
-                    for i in 1..=level_count-1 {
+                    for i in 1..=level_count - 1 {
                         level_page_sizes.push((level_page_sizes[i as usize - 1] * 2));
                     }
                     level_page_sizes
@@ -104,17 +98,6 @@ impl LevelPage {
         let mut levels = Vec::new();
         let mut levels_page_size = Vec::new();
 
-        let mut cache_size = opts.small_page_cache_size;
-        if cache_size < MIN_SMALL_PAGE_CACHE_SIZE {
-            cache_size = MIN_SMALL_PAGE_CACHE_SIZE;
-        }
-        let shared_cache = Arc::new(
-            Cache::builder()
-                .max_capacity(cache_size)
-                .weigher(|_k: &u64, v: &Vec<u8>| v.len() as u32)
-                .build(),
-        );
-
         for file_meta in &meta.files {
             let index_path = base_dir.join(format!(
                 "index_{}b_{}.idx",
@@ -125,15 +108,8 @@ impl LevelPage {
                 file_meta.page_size, file_meta.file_index
             ));
 
-            if file_meta.page_size <= SMALL_PAGE_SIZE_THRESHOLD as u32 {
-                let page_bitmap = PageBitmap::new(&index_path, &data_path, file_meta.page_size, Some(shared_cache.clone()))?;
-                levels.push(page_bitmap);
-            } else {
-                let page_bitmap = PageBitmap::new(&index_path, &data_path, file_meta.page_size, None)?;
-                levels.push(page_bitmap);
-            }
-
-
+            let page_bitmap = PageBitmap::new(&index_path, &data_path, file_meta.page_size, None)?;
+            levels.push(page_bitmap);
 
             if !levels_page_size.contains(&file_meta.page_size) {
                 levels_page_size.push(file_meta.page_size);

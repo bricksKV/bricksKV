@@ -5,7 +5,6 @@ use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex, RwLock};
 use moka::sync::Cache;
-use crate::kv::data::level_page_bitmap::{page_bitmap, SMALL_PAGE_SIZE_THRESHOLD};
 
 #[derive(Debug)]
 pub struct PageBitmap {
@@ -14,7 +13,6 @@ pub struct PageBitmap {
     page_size: u32,
     index_file: File,
     data_file: File,
-    cache: Option<Arc<Cache<u64, Vec<u8>>>>,
 }
 
 
@@ -62,12 +60,10 @@ impl PageBitmap {
                 page_size,
                 index_file: file,
                 data_file,
-                cache,
             })
         } else {
             // Recover from existing files
-            let mut page_bitmap = Self::recover_from_file(index_file_path, data_file_path, page_size)?;
-            page_bitmap.cache = cache;
+            let page_bitmap = Self::recover_from_file(index_file_path, data_file_path, page_size)?;
             Ok(page_bitmap)
         }
     }
@@ -128,7 +124,6 @@ impl PageBitmap {
             page_size,
             index_file,
             data_file,
-            cache: None,
         })
     }
 
@@ -285,10 +280,6 @@ impl PageBitmap {
     /// Free a page (mark as unused)
     pub fn free_page(&self, idx: u64) -> std::io::Result<()> {
 
-        if let Some(cache) = &self.cache {
-            cache.remove(&idx);
-        }
-        
         let idx_usize = idx as usize;
 
         // Clear bit in index file

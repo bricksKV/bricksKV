@@ -102,7 +102,6 @@ fn main() {
 
     let mut kv_options = KVOptions::default();
     kv_options.wal_options.fsync = false;
-    kv_options.value_store_options.small_page_cache_size = 16 * 1024 * 1024;
 
     let kv = KV::new(dir.path(), kv_options).unwrap();
 
