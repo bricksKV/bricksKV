@@ -219,37 +219,96 @@ impl<T: BucketValue> Bucket<T> {
         if key.len() != self.key_size as usize {
             return Err(BucketError::InvalidKeyLength);
         }
-
+        
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         let hash = hasher.finish();
 
-        let inner_data_with_read_lock = self.inner_data.read().unwrap();
-
-        let start_index = hash % inner_data_with_read_lock.entry_num;
+        let inner = self.inner_data.read().unwrap();
+        let entry_num = inner.entry_num;
+        let start_index = hash % entry_num;
         let max_search = self.get_max_search();
 
-        for i in 0..max_search {
-            let index = (start_index + i as u64) % inner_data_with_read_lock.entry_num;
-            let offset = index * self.entry_size as u64;
+        let entry_size = self.entry_size as usize;
+        let start_offset = start_index * self.entry_size as u64;
+        let entries_until_end = (entry_num - start_index) as usize;
+        
+        if max_search <= entries_until_end {
+            let mut buf = vec![0u8; max_search as usize * entry_size];
+            inner.file.read_at(&mut buf, start_offset)?;
 
-            let mut buf = vec![0u8; self.entry_size as usize];
-            inner_data_with_read_lock
-                .file
-                .read_at(&mut buf, offset)?;
-            let entry = Entry::<T>::decode(&buf, self.key_size as usize).unwrap();
+            for i in 0..max_search as usize {
+                let offset_in_buf = i * entry_size;
+                let entry_buf = &buf[offset_in_buf..offset_in_buf + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
 
-            if entry.is_free() || entry.key == key {
-                let new_entry = Entry {
-                    meta: EntryMeta::Occupied,
-                    key: key.clone(),
-                    value,
-                };
-                let encoded = new_entry.encode(self.key_size as usize);
-                inner_data_with_read_lock
-                    .file
-                    .write_all_at(&encoded, offset)?;
-                return Ok(());
+                if entry.is_free() || entry.key == key {
+                    let index = (start_index + i as u64) % entry_num;
+                    let file_offset = index * self.entry_size as u64;
+
+                    let new_entry = Entry {
+                        meta: EntryMeta::Occupied,
+                        key,
+                        value,
+                    };
+                    let encoded = new_entry.encode(self.key_size as usize);
+                    inner.file.write_all_at(&encoded, file_offset)?;
+                    return Ok(());
+                }
+            }
+
+            return Err(BucketError::MaxSearchReached);
+        }
+        
+        let first_entries = entries_until_end;
+        let second_entries = max_search as usize - first_entries;
+        
+        if first_entries > 0 {
+            let mut buf1 = vec![0u8; first_entries * entry_size];
+            inner.file.read_at(&mut buf1, start_offset)?;
+
+            for i in 0..first_entries {
+                let offset_in_buf = i * entry_size;
+                let entry_buf = &buf1[offset_in_buf..offset_in_buf + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
+
+                if entry.is_free() || entry.key == key {
+                    let index = (start_index + i as u64) % entry_num;
+                    let file_offset = index * self.entry_size as u64;
+
+                    let new_entry = Entry {
+                        meta: EntryMeta::Occupied,
+                        key,
+                        value,
+                    };
+                    let encoded = new_entry.encode(self.key_size as usize);
+                    inner.file.write_all_at(&encoded, file_offset)?;
+                    return Ok(());
+                }
+            }
+        }
+        if second_entries > 0 {
+            let mut buf2 = vec![0u8; second_entries * entry_size];
+            inner.file.read_at(&mut buf2, 0)?;
+
+            for i in 0..second_entries {
+                let offset_in_buf = i * entry_size;
+                let entry_buf = &buf2[offset_in_buf..offset_in_buf + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
+
+                if entry.is_free() || entry.key == key {
+                    let index = i as u64; // 因为从头开始
+                    let file_offset = index * self.entry_size as u64;
+
+                    let new_entry = Entry {
+                        meta: EntryMeta::Occupied,
+                        key,
+                        value,
+                    };
+                    let encoded = new_entry.encode(self.key_size as usize);
+                    inner.file.write_all_at(&encoded, file_offset)?;
+                    return Ok(());
+                }
             }
         }
 
@@ -264,24 +323,65 @@ impl<T: BucketValue> Bucket<T> {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         let hash = hasher.finish();
-        let inner_data_with_read_lock = self.inner_data.read().unwrap();
-        let start_index = hash % inner_data_with_read_lock.entry_num;
+
+        let inner = self.inner_data.read().unwrap();
+        let entry_num = inner.entry_num;
+        let start_index = hash % entry_num;
         let max_search = self.get_max_search();
 
-        for i in 0..max_search {
-            let index = (start_index + i as u64) % inner_data_with_read_lock.entry_num;
-            let offset = index * self.entry_size as u64;
+        let entry_size = self.entry_size as usize;
+        let start_offset = start_index * self.entry_size as u64;
+        let entries_until_end = (entry_num - start_index) as usize;
 
-            let mut buf = vec![0u8; self.entry_size as usize];
-            inner_data_with_read_lock
-                .file
-                .read_at(&mut buf, offset)?;
-            let entry = Entry::<T>::decode(&buf, self.key_size as usize).unwrap();
+        if max_search <= entries_until_end {
+            let mut buf = vec![0u8; max_search as usize * entry_size];
+            inner.file.read_at(&mut buf, start_offset)?;
 
-            if entry.is_occupied() && entry.key == key {
-                return Ok(Some(entry.value));
+            for i in 0..max_search as usize {
+                let offset = i * entry_size;
+                let entry_buf = &buf[offset..offset + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
+
+                if entry.is_occupied() && entry.key == key {
+                    return Ok(Some(entry.value));
+                }
+            }
+            return Ok(None);
+        }
+
+        let first_entries = entries_until_end;
+        let second_entries = max_search as usize - first_entries;
+
+        if first_entries > 0 {
+            let mut buf1 = vec![0u8; first_entries * entry_size];
+            inner.file.read_at(&mut buf1, start_offset)?;
+
+            for i in 0..first_entries {
+                let offset = i * entry_size;
+                let entry_buf = &buf1[offset..offset + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
+
+                if entry.is_occupied() && entry.key == key {
+                    return Ok(Some(entry.value));
+                }
             }
         }
+
+        if second_entries > 0 {
+            let mut buf2 = vec![0u8; second_entries * entry_size];
+            inner.file.read_at(&mut buf2, 0)?;
+
+            for i in 0..second_entries {
+                let offset = i * entry_size;
+                let entry_buf = &buf2[offset..offset + entry_size];
+                let entry = Entry::<T>::decode(entry_buf, self.key_size as usize).unwrap();
+
+                if entry.is_occupied() && entry.key == key {
+                    return Ok(Some(entry.value));
+                }
+            }
+        }
+
         Ok(None)
     }
 
