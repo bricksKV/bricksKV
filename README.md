@@ -26,7 +26,6 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 内存层：
 
 * kv-buffer：kv缓冲，负责把用户写入的kv数据先完整缓存到内存中。
-* kv-cache：kv缓存，负责缓存用户读写的kv数据，提升访问效率。
 
 ## 核心流程
 
@@ -34,7 +33,7 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 
 * 写流程：先持久化到wal，然后写入kv-buffer，然后写入kv-cache。
 * 异步刷新流程：当wal文件大于指定大小比如4MB时，触发异步刷新。每一个wal文件对应kv-buffer里的一个map，按顺序将每个kv以先刷v到value-store后刷k到key-store的方式刷到存储层。刷新完成后，将wal文件删除和内存中对应的kv-buffer删除。
-* 读流程：先从kv-buffer读，如果找不到，再从kv-cache读，如果还是找不到，再从key-store，value-store读。
+* 读流程：先从kv-buffer读，如果找不到，再从key-store，value-store读。
 
 ## 核心模块设计
 
@@ -69,9 +68,6 @@ hash碰撞的解决方案是匹配到同一下标时假设出现碰撞，则继�
 键值缓冲的作用在于在键值对刷新到key-store，value-store层之前，先将键值对存储在内存中，保持数据的一致性。类似leveldb中的memtable。在数据刷新到磁盘之前，需要完整存储键值对，因此积累到一定量的时候需要刷新到磁盘。
 一个wal对应kv-buffer中的一个map。每刷盘一个map，则删除对应的wal文件。
 
-#### kv-cache（键值缓存）
-
-kv-cache位于kv-buffer和key-store、value-store之间，kv-cache的作用是缓存kv数据，提升访问效率，减少磁盘I/O。既然是缓存那么也就有过期策略，比如LRU。
 
 ## 性能分析
 * 写：串行追加写入wal文件。
