@@ -1,4 +1,5 @@
 ## Introduction
+[📘 中文版文档](./docs/README_ZH.md)
 
 **bricksKV** is a high-performance key-value storage engine implemented in Rust.  
 In simple terms, bricksKV can be seen as a **disk-based version of ConcurrentHashMap** — it supports serial writes and concurrent reads, achieving **O(1)** time complexity for reads.
