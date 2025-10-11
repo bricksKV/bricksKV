@@ -68,7 +68,7 @@ impl BucketValue for DataInfo {
     }
 }
 
-/// General KV error, contains only IO and Other
+/// General KV error
 #[derive(Debug)]
 pub enum KVError {
     Io(io::Error),
@@ -108,7 +108,8 @@ impl std::fmt::Display for KVError {
 
 impl error::Error for KVError {}
 
-const BUCKETS_INDEX_DIR_NAME: &str = "buckets-index";
+const KEY_STORE_DIR_NAME: &str = "key-store";
+const VALUE_STORE_DIR_NAME: &str = "value-store";
 
 const WAL_DIR_NAME: &str = "wal";
 
@@ -153,12 +154,12 @@ impl KV {
         create_dir_all(&dir)?;
 
         let level_page_bitmap = Arc::new(level_page_bitmap::LevelPage::new(
-            &dir, // Each page_size file under the directory
+            dir.join(VALUE_STORE_DIR_NAME), // Each page_size file under the directory
             opts.value_store_options.clone(),
         )?);
 
         let bucket_index = Arc::new(Buckets::new(
-            dir.join(BUCKETS_INDEX_DIR_NAME),
+            dir.join(KEY_STORE_DIR_NAME),
             BucketsOptions::default(),
         )?);
 
