@@ -114,15 +114,11 @@ If no free slot is found, the store expands — creating a larger file and migra
 
 #### KV Buffer
 
-The KV buffer ensures consistency before data is flushed to the key store and value store — similar to **LevelDB’s memtable**.  
-Each WAL file corresponds to one in-memory map in the buffer.  
-Once flushed to disk, both the WAL and the map are deleted.
+The KV buffer ensures consistency before data is flushed to the key store and value store — similar to **LevelDB’s memtable**. each WAL file corresponds to one in-memory map in the buffer. once flushed to disk, both the WAL and the map are deleted.
 
 #### KV Cache
 
-The KV cache sits between the buffer and the persistent stores.  
-It caches key-value data to reduce disk I/O and improve read performance.  
-As a cache, it includes an eviction policy (e.g., **LRU**).
+The KV cache sits between the buffer and the persistent stores. It caches key-value data to reduce disk I/O and improve read performance. As a cache, it includes an eviction policy (e.g., **LRU**).
 
 ---
 
@@ -132,12 +128,6 @@ As a cache, it includes an eviction policy (e.g., **LRU**).
   Sequential appends to the WAL file ensure efficient disk writes.
 
 - **Read**:  
-  Supports concurrent reads.  
-  If data exists in the KV cache, access is fast.  
-  Otherwise, the system locates the key through the key store using a hash lookup.  
-  Even in the case of hash collisions, up to 32 probes (typically within a 4 KB region) are sufficient, often requiring just **one disk I/O**.  
-  Then, using the value ID, another I/O retrieves the value from the value store.
-
-  Thus, **in most cases, a read can be completed in just two I/O operations** — even without cache hits, while maintaining **O(1) time complexity** for lookups.
+  Supports concurrent reads. If data exists in the KV cache, access is fast. Otherwise, the system locates the key through the key store using a hash lookup. even in the case of hash collisions, up to 32 probes (typically within a 4 KB region) are sufficient, often requiring just **one disk I/O**. Then, using the value ID, another I/O retrieves the value from the value store. Thus, **in most cases, a read can be completed in just two I/O operations** — even without cache hits, while maintaining **O(1) time complexity** for lookups.
 
 ---
