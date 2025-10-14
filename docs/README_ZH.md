@@ -16,7 +16,7 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 
 ## 架构
 
-![Architecture](./docs/image/architecture.png)
+![Architecture](./image/architecture.png)
 
 持久层：
 * wal: 预写日志，负责以追加的方式快速持久化把kv到文件中和系统崩溃数据恢复。
@@ -30,7 +30,7 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 
 ## 核心流程
 
-![Core flow](./docs/image/core-flow.png)
+![Core flow](./image/core-flow.png)
 
 * 写流程：先持久化到wal，然后写入kv-buffer，然后写入kv-cache。
 * 异步刷新流程：当wal文件大于指定大小比如4MB时，触发异步刷新。每一个wal文件对应kv-buffer里的一个map，按顺序将每个kv以先刷v到value-store后刷k到key-store的方式刷到存储层。刷新完成后，将wal文件删除和内存中对应的kv-buffer删除。
