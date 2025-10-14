@@ -42,7 +42,7 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 
 #### wal（预写日志）
 
-![wal](./docs/image/wal.png)
+![wal](./image/wal.png)
 
 预写日志：以追加的方式按照数据长度（4B）加上payload数据的格式存储数据。wal不关心具体的数据内容，只关心每条数据的长度。
 
@@ -51,13 +51,13 @@ bricksKV是一个使用Rust实现的高性能kv存储引擎。用一句话来类
 每个数据页在文件中都有一个按顺序递增的编号id，用来标识该数据页。键存储需要存储这个编号id来读取数据页。有了编号id，由于数据页是固定长度从而可以通过偏移量计算快速计算到数据页的起始位置。
 
 单层数据页文件和对应的多级bitIndex：
-![one-level](./docs/image/value-store.png)
+![one-level](./image/value-store.png)
 多层多级数据页文件和对应的bitIndex：
-![one-level](docs/image/multi_level_data_page_file.png)
+![one-level](./image/multi_level_data_page_file.png)
 
 #### key-store（键存储）
 
-![key-store](./docs/image/key-store.png)
+![key-store](./image/key-store.png)
 
 键存储的核心思路是类似ConcurrentHashmap，将键分桶存储，根据键的hash值路由到不同的桶中，桶内又按照键的hash计算数据项的下标。键存储文件也是以固定长度的数据项为单位存储，数据项的内容为键+值的编号id+值长度。
 hash碰撞的解决方案是匹配到同一下标时假设出现碰撞，则继续像后寻找最多指定数量（比如32次）的数据项，如果仍然没有找到空闲数据项则扩容。扩容和hashmap的扩容方式类似，先创建一个更大的文件，然后将数据项复制过去。
